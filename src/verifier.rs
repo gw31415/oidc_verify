@@ -9,8 +9,34 @@ use jwt_simple::prelude::*;
 use serde_json::Value;
 
 pub use jwt_simple::prelude::JWTClaims;
-use ureq::get;
 pub use url::Url;
+
+async fn fetch_json<T>(url: Url) -> Result<T, ConnectionError>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let text = tokio::spawn(async move {
+        use ureq::get;
+
+        let response = get(url.as_str()).call();
+        match response {
+            Ok(resp) => {
+                if let Ok(text) = resp.into_string() {
+                    Ok(text)
+                } else {
+                    Err(())
+                }
+            }
+            Err(_) => Err(()),
+        }
+    })
+    .await
+    .or(Err(ConnectionError::ProgrammingError("no response")))?
+    .or(Err(ConnectionError::UnreachedToIssuer))?;
+    let result = serde_json::from_str(&text)
+        .or(Err(ConnectionError::IssuerBroken("invalid JSON in JWKS")))?;
+    Ok(result)
+}
 
 /// A verifier for OpenID Connect.
 #[derive(Clone)]
@@ -27,10 +53,8 @@ impl Verifier {
                 .issuer
                 .join(".well-known/openid-configuration")
                 .or(Err(ConnectionError::ProgrammingError("invalid URL")))?;
-            get(url.as_str())
-                .call()
-                .or(Err(ConnectionError::UnreachedToIssuer))?
-                .into_json::<Value>()
+            fetch_json::<Value>(url)
+                .await
                 .or(Err(ConnectionError::IssuerBroken(
                     "invalid JSON in openid-configuration",
                 )))?
@@ -126,10 +150,8 @@ impl Verifier {
     pub async fn recache_jwks(&self) -> Result<(), ConnectionError> {
         // Attempt to acquire (only once)
 
-        let jwks = get(self.jwks_uri().await?.as_str())
-            .call()
-            .or(Err(ConnectionError::UnreachedToIssuer))?
-            .into_json::<Value>()
+        let jwks = fetch_json::<Value>(self.jwks_uri().await?)
+            .await
             .or(Err(ConnectionError::IssuerBroken("invalid JSON in JWKS")))?
             .get("keys")
             .ok_or(ConnectionError::IssuerBroken("no `keys` field in JWKS"))?
