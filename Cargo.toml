@@ -7,7 +7,7 @@ description = "A simple-usage OIDC-RS256 token verifier. It works without `autho
 license = "Apache-2.0"
 repository = "https://github.com/gw31415/oidc_verify"
 categories = ["authentication"]
-keywords = ["oidc", "jwt", "verify", "authentication", "security", "firebase"]
+keywords = ["oidc", "jwt", "verify", "authentication", "firebase"]
 
 [dependencies.jwt-simple]
 version = "0.12.9"
