@@ -1,6 +1,6 @@
 [package]
 name = "oidc_verify"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["gw31415 <gw31415@amas.dev>"]
 description = "A simple-usage OIDC-RS256 token verifier. It works without `authorization_endpoint` field, such as Firebase Auth."
