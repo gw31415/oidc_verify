@@ -17,7 +17,7 @@ async fn main() {
 
     match verifier.verify::<Value>(token).await {
         Ok(claims) => {
-            println!("Claims: {}", serde_json::to_string(&claims).unwrap());
+            println!("Claims: {}", serde_json::to_string_pretty(&claims).unwrap());
         },
         Err(err) => {
             println!("Error: {:?}", err);
