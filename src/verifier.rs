@@ -6,11 +6,11 @@ use std::{
 };
 
 use jwt_simple::prelude::*;
-use reqwest::{get, IntoUrl};
 use serde_json::Value;
 
 pub use jwt_simple::prelude::JWTClaims;
-pub use reqwest::Url;
+use ureq::get;
+pub use url::Url;
 
 /// A verifier for OpenID Connect.
 #[derive(Clone)]
@@ -27,11 +27,10 @@ impl Verifier {
                 .issuer
                 .join(".well-known/openid-configuration")
                 .or(Err(ConnectionError::ProgrammingError("invalid URL")))?;
-            get(url)
-                .await
+            get(url.as_str())
+                .call()
                 .or(Err(ConnectionError::UnreachedToIssuer))?
-                .json::<Value>()
-                .await
+                .into_json::<Value>()
                 .or(Err(ConnectionError::IssuerBroken(
                     "invalid JSON in openid-configuration",
                 )))?
@@ -127,11 +126,10 @@ impl Verifier {
     pub async fn recache_jwks(&self) -> Result<(), ConnectionError> {
         // Attempt to acquire (only once)
 
-        let jwks = get(self.jwks_uri().await?)
-            .await
+        let jwks = get(self.jwks_uri().await?.as_str())
+            .call()
             .or(Err(ConnectionError::UnreachedToIssuer))?
-            .json::<Value>()
-            .await
+            .into_json::<Value>()
             .or(Err(ConnectionError::IssuerBroken("invalid JSON in JWKS")))?
             .get("keys")
             .ok_or(ConnectionError::IssuerBroken("no `keys` field in JWKS"))?
@@ -187,11 +185,10 @@ impl Verifier {
     }
 
     /// Create a new `Verifier` instance.
-    pub fn new(issuer: impl IntoUrl) -> Result<Verifier, ConnectionError> {
+    pub fn new(issuer: impl AsRef<str>) -> Result<Verifier, ConnectionError> {
         Ok(Verifier {
-            issuer: issuer
-                .into_url()
-                .or(Err(ConnectionError::ProgrammingError("invalid URL")))?,
+            issuer: Url::parse(issuer.as_ref())
+                .map_err(|_| ConnectionError::ProgrammingError("invalid URL"))?,
             inner_jwks: Default::default(),
         })
     }
