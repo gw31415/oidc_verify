@@ -15,27 +15,16 @@ async fn fetch_json<T>(url: Url) -> Result<T, ConnectionError>
 where
     T: serde::de::DeserializeOwned,
 {
-    let text = tokio::spawn(async move {
+    {
+        use tokio::task::spawn_blocking;
         use ureq::get;
-
-        let response = get(url.as_str()).call();
-        match response {
-            Ok(resp) => {
-                if let Ok(text) = resp.into_string() {
-                    Ok(text)
-                } else {
-                    Err(())
-                }
-            }
-            Err(_) => Err(()),
-        }
-    })
+        spawn_blocking(move || get(url.as_str()).call())
+    }
     .await
     .or(Err(ConnectionError::ProgrammingError("no response")))?
-    .or(Err(ConnectionError::UnreachedToIssuer))?;
-    let result = serde_json::from_str(&text)
-        .or(Err(ConnectionError::IssuerBroken("invalid JSON in JWKS")))?;
-    Ok(result)
+    .or(Err(ConnectionError::UnreachedToIssuer))?
+    .into_json::<T>()
+    .or(Err(ConnectionError::IssuerBroken("invalid JSON")))
 }
 
 /// A verifier for OpenID Connect.
