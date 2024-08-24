@@ -1,8 +1,7 @@
 # oidc_verifier
 
-This is a simple library to verify the JWT token received from the OIDC provider.
-This works without It works without `authorization_endpoint` field, such as
-Firebase Auth.
+This is a simple library to verify the JWT token of RS256 received from the OIDC provider.
+This works without It works without `authorization_endpoint` field, such as Firebase Auth.
 
 ## Usage
 
@@ -12,17 +11,17 @@ use serde_json::Value;
 
 #[tokio::main]
 async fn main() {
-	let verifier = Verifier::new("https://securetoken.google.com/hogehoge-fugafuga/").unwrap();
+    let verifier = Verifier::new("https://securetoken.google.com/hogehoge-fugafuga/").unwrap();
 
-	let token = "Bearer 3x4mple.t0k3n".strip_prefix("Bearer ").unwrap();
+    let token = "Bearer 3x4mple.t0k3n".strip_prefix("Bearer ").unwrap();
 
     match verifier.verify::<Value>(token).await {
         Ok(claims) => {
-			println!("Claims: {:?}", claims);
-		},
+            println!("Claims: {}", serde_json::to_string(&claims).unwrap());
+        },
         Err(err) => {
-			println!("Error: {:?}", err);
-		},
+            println!("Error: {:?}", err);
+        },
     }
 }
 ```
