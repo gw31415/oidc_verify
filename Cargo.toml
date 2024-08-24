@@ -1,0 +1,17 @@
+[package]
+name = "oidc_verify"
+version = "0.1.0"
+edition = "2021"
+authors = ["gw31415 <gw31415@amas.dev>"]
+description = "A simple OIDC token verifier. It works without `authorization_endpoint` field, such as Firebase Auth."
+license = "Apache-2.0"
+repository = "https://github.com/gw31415/oidc_verify"
+categories = ["authentication"]
+keywords = ["oidc", "jwt", "verify", "authentication", "security", "firebase"]
+
+[dependencies]
+jwt-simple = "0.12.9"
+reqwest = { version = "0.12.7", features = ["json"] }
+serde = "1.0.208"
+serde_json = "1.0.125"
+thiserror = "1.0.63"
