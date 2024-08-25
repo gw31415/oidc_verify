@@ -11,20 +11,24 @@ use serde_json::Value;
 pub use jwt_simple::prelude::JWTClaims;
 pub use url::Url;
 
-async fn fetch_json<T>(url: Url) -> Result<T, ConnectionError>
+/// Fetch JSON and parse as `T` from the URL. Fetching process is processed in a new blocking-thread.
+async fn fetch_json<T>(url: Url) -> Result<T, FetchError>
 where
     T: serde::de::DeserializeOwned,
 {
     {
         use tokio::task::spawn_blocking;
         use ureq::get;
-        spawn_blocking(move || get(url.as_str()).call())
+        spawn_blocking(move || {
+            get(url.as_str())
+                .call()
+                .or(Err(FetchError::NetworkError(url)))
+        })
     }
     .await
-    .or(Err(ConnectionError::ProgrammingError("no response")))?
-    .or(Err(ConnectionError::UnreachedToIssuer))?
+    .expect("the spawned blocking task are not supposed to panic or cancel")?
     .into_json::<T>()
-    .or(Err(ConnectionError::IssuerBroken("invalid JSON")))
+    .or(Err(FetchError::ParseError))
 }
 
 /// A verifier for OpenID Connect.
@@ -38,15 +42,10 @@ impl Verifier {
     /// Get the OpenID Configuration and check the required features.
     async fn openid_configuration(&self) -> Result<Value, ConnectionError> {
         let openid_configuration: Value = {
-            let url = self
-                .issuer
-                .join(".well-known/openid-configuration")
-                .or(Err(ConnectionError::ProgrammingError("invalid URL")))?;
-            fetch_json::<Value>(url)
-                .await
-                .or(Err(ConnectionError::IssuerBroken(
-                    "invalid JSON in openid-configuration",
-                )))?
+            let url = self.issuer.join(".well-known/openid-configuration").expect(
+                "the issuer and `.well-known/openid-configuration` URL must be a valid URL/path",
+            );
+            fetch_json::<Value>(url).await?
         };
 
         {
@@ -54,45 +53,33 @@ impl Verifier {
 
             let response_type_supported = openid_configuration
                 .get("response_types_supported")
-                .ok_or(ConnectionError::IssuerBroken(
-                    "no `response_types_supported` field",
-                ))?
+                .ok_or(ConnectionError::BrokenConfiguration)?
                 .as_array()
-                .ok_or(ConnectionError::IssuerBroken(
-                    "the value of `response_types_supported` is not an array",
-                ))?;
+                .ok_or(ConnectionError::BrokenConfiguration)?;
 
             if !response_type_supported.contains(&Value::String("id_token".to_string())) {
-                return Err(ConnectionError::SupportsUnmatch);
+                return Err(ConnectionError::UnmatchConfiguration);
             }
 
             let subject_types_supported = openid_configuration
                 .get("subject_types_supported")
-                .ok_or(ConnectionError::IssuerBroken(
-                    "no `subject_types_supported` field",
-                ))?
+                .ok_or(ConnectionError::BrokenConfiguration)?
                 .as_array()
-                .ok_or(ConnectionError::IssuerBroken(
-                    "the value of `subject_types_supported` is not an array",
-                ))?;
+                .ok_or(ConnectionError::BrokenConfiguration)?;
 
             if !subject_types_supported.contains(&Value::String("public".to_string())) {
-                return Err(ConnectionError::SupportsUnmatch);
+                return Err(ConnectionError::UnmatchConfiguration);
             }
 
             let id_token_signing_alg_values_supported = openid_configuration
                 .get("id_token_signing_alg_values_supported")
-                .ok_or(ConnectionError::IssuerBroken(
-                    "no `id_token_signing_alg_values_supported` field",
-                ))?
+                .ok_or(ConnectionError::BrokenConfiguration)?
                 .as_array()
-                .ok_or(ConnectionError::IssuerBroken(
-                    "the value of `id_token_signing_alg_values_supported` is not an array",
-                ))?;
+                .ok_or(ConnectionError::BrokenConfiguration)?;
 
             if !id_token_signing_alg_values_supported.contains(&Value::String("RS256".to_string()))
             {
-                return Err(ConnectionError::SupportsUnmatch);
+                return Err(ConnectionError::UnmatchConfiguration);
             }
         }
 
@@ -105,15 +92,11 @@ impl Verifier {
             .openid_configuration()
             .await?
             .get("jwks_uri")
-            .ok_or(ConnectionError::IssuerBroken("no `jwks_uri` field"))?
+            .ok_or(ConnectionError::BrokenConfiguration)?
             .as_str()
-            .ok_or(ConnectionError::IssuerBroken(
-                "the value of `jwks_uri` is not a string",
-            ))?
+            .ok_or(ConnectionError::BrokenConfiguration)?
             .parse()
-            .or(Err(ConnectionError::IssuerBroken(
-                "the value of `jwks_uri` is not a valid URL",
-            )))?;
+            .or(Err(ConnectionError::BrokenConfiguration))?;
         Ok(jwks_uri)
     }
 
@@ -122,17 +105,14 @@ impl Verifier {
         &self,
         token: impl AsRef<str>,
     ) -> Result<JWTClaims<T>, VerifyError> {
-        use VerifyError::InvalidToken;
-
-        let metadata = Token::decode_metadata(token.as_ref())
-            .or(Err(InvalidToken("could not decode the token metadata")))?;
+        let metadata = Token::decode_metadata(token.as_ref()).or(Err(ValidationError::Broken))?;
         let kid = metadata
             .key_id()
-            .ok_or(InvalidToken("no `kid` field in the token metadata"))?;
+            .ok_or(ConnectionError::BrokenConfiguration)?;
 
         let key = self.jwk(kid).await?;
         key.verify_token(token.as_ref(), None)
-            .or(Err(InvalidToken("could not verify the token")))
+            .or(Err(ValidationError::Invalid.into()))
     }
 
     /// Re-cache the JWKS.
@@ -140,16 +120,17 @@ impl Verifier {
         // Attempt to acquire (only once)
 
         let jwks = fetch_json::<Value>(self.jwks_uri().await?)
-            .await
-            .or(Err(ConnectionError::IssuerBroken("invalid JSON in JWKS")))?
+            .await?
             .get("keys")
-            .ok_or(ConnectionError::IssuerBroken("no `keys` field in JWKS"))?
+            .ok_or(ConnectionError::BrokenConfiguration)?
             .as_array()
-            .ok_or(ConnectionError::IssuerBroken(
-                "no `keys` field in JWKS is not an array",
-            ))?
+            .ok_or(ConnectionError::BrokenConfiguration)?
             .iter()
             .filter_map(|jwk| -> Option<(String, _)> {
+                // Parse the JWKs to pairs of `kid` and `RS256PublicKey`.
+                // If unsupported JWKs are found or invalid JWKs are found, they are ignored and
+                // filtered out
+
                 if jwk["kty"] != "RSA" || jwk["alg"] != "RS256" {
                     return None;
                 }
@@ -161,12 +142,12 @@ impl Verifier {
                     jwk["e"].as_str()?.trim_end_matches('='),
                     None,
                 )
-                .unwrap();
+                .ok()?;
                 let n: &[u8] = &Base64UrlSafeNoPadding::decode_to_vec(
                     jwk["n"].as_str()?.trim_end_matches('='),
                     None,
                 )
-                .unwrap();
+                .ok()?;
 
                 let key = RS256PublicKey::from_components(n, e).ok()?;
 
@@ -185,22 +166,21 @@ impl Verifier {
             return Ok(key.clone());
         }
 
-        // Could not find the key, so reacquired JWKS only once from the possibility of updating
+        // Could not find the key, so reacquired JWKS only once from the possibility of updating.
         self.recache_jwks().await?;
 
         if let Some(key) = self.inner_jwks.read().unwrap().get(kid) {
             return Ok(key.clone());
         }
 
-        Err(VerifyError::JwkNotFound)
+        Err(ValidationError::PubkeyNotFound.into())
     }
 
     /// Create a new `Verifier` instance.
-    pub fn new(issuer: impl AsRef<str>) -> Result<Verifier, ConnectionError> {
-        Ok(Verifier {
-            issuer: Url::parse(issuer.as_ref())
-                .map_err(|_| ConnectionError::ProgrammingError("invalid URL"))?,
+    pub fn new(issuer: Url) -> Verifier {
+        Verifier {
+            issuer,
             inner_jwks: Default::default(),
-        })
+        }
     }
 }

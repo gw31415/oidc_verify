@@ -7,6 +7,11 @@
 This is a simple library to verify the JWT token of RS256 received from the OIDC provider.
 This works without It works without `authorization_endpoint` field, such as Firebase Auth.
 
+## Dependencies
+
+This library depends on `tokio` as an async runtime, so your project should select `tokio`
+as an async runtime too.
+
 ## Usage
 
 ```rust
@@ -15,7 +20,7 @@ use serde_json::Value;
 
 #[tokio::main]
 async fn main() {
-    let verifier = Verifier::new("https://securetoken.google.com/hogehoge-fugafuga/").unwrap();
+    let verifier = Verifier::new("https://securetoken.google.com/hogehoge-fugafuga/");
 
     let token = "Bearer 3x4mple.t0k3n".strip_prefix("Bearer ").unwrap();
 

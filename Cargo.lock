@@ -556,7 +556,7 @@ dependencies = [
 
 [[package]]
 name = "oidc_verify"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "jwt-simple",
  "serde",

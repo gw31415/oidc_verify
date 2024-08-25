@@ -1,6 +1,6 @@
 [package]
 name = "oidc_verify"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2021"
 authors = ["gw31415 <gw31415@amas.dev>"]
 description = "A simple-usage OIDC-RS256 token verifier. It works without `authorization_endpoint` field, such as Firebase Auth."
@@ -11,8 +11,8 @@ keywords = ["oidc", "jwt", "verify", "authentication", "firebase"]
 
 [dependencies.jwt-simple]
 version = "0.12.9"
-features = ["pure-rust"]
 default-features = false
+features = ["pure-rust"]
 
 [dependencies]
 serde = "1.0.209"
