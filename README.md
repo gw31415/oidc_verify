@@ -9,8 +9,8 @@ This works without It works without `authorization_endpoint` field, such as Fire
 
 ## Dependencies
 
-This library depends on `tokio` as an async runtime, so your project should select `tokio`
-as an async runtime too.
+This library depends on `tokio` as an async runtime, so **your project should select `tokio`
+as an async runtime too**.
 
 ## Usage
 
@@ -33,7 +33,7 @@ async fn main() {
         },
     }
 }
-```
+````
 
 ## License
 
