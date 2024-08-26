@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
 
 This is a simple library to verify the JWT token of RS256 received from the OIDC provider.
-This works without It works without `authorization_endpoint` field, such as Firebase Auth.
+It works without `authorization_endpoint` field, such as Firebase Auth.
 
 ## Dependencies
 
